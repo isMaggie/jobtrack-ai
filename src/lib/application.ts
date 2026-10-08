@@ -15,6 +15,7 @@ export const applicationInputSchema = z.object({
   jobDescription: z.string().optional(),
   jobUrl: z.url({ protocol: /^https?$/ }).optional(),
   status: applicationStatusSchema.default("APPLIED"),
+  // Persistence uses the UTC calendar day and returns midnight UTC.
   appliedDate: z.date(),
 });
 
