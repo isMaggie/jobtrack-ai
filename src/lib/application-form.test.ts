@@ -31,3 +31,9 @@ describe("application form", () => {
     expect(parseApplicationForm(data)).toMatchObject({ success: false, fieldErrors: { [field]: expect.any(Array) } });
   });
 });
+
+describe("optional field limits", () => {
+  it.each<Record<string, string>>([{ jobDescription: "x".repeat(20_001) }, { jobUrl: `https://example.com/${"x".repeat(2048)}` }])("rejects oversized values on final save", (values) => {
+    expect(parseApplicationForm(form(values)).success).toBe(false);
+  });
+});

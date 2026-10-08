@@ -1,9 +1,17 @@
 import { randomUUID } from "node:crypto";
 import { Client } from "pg";
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { createApplication, getApplicationById, listApplications, updateApplicationStatus } from "./application-repository";
 import { type ApplicationStatus } from "./application";
 import { getPool } from "./db";
+
+import { extractEmailAction } from "../app/applications/import/actions";
+import { createApplicationAction } from "../app/applications/actions";
+import { extractApplicationDraft } from "./email-extraction";
+
+vi.mock("./email-extraction", () => ({ extractApplicationDraft: vi.fn() }));
+vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
+vi.mock("next/navigation", () => ({ redirect: vi.fn(() => { throw new Error("test redirect"); }) }));
 
 const input = {
   company: "Example Company",
@@ -121,5 +129,27 @@ describe("application persistence", () => {
       "INSERT INTO applications (id, company, position, applied_date) VALUES ($1, $2, $3, $4)",
       [created.id, input.company, input.position, "2026-10-07"],
     )).rejects.toMatchObject({ code: "23505" });
+  });
+});
+
+describe("email import persistence", () => {
+  it("writes only after confirmation and saves the reviewed edits", async () => {
+    vi.mocked(extractApplicationDraft).mockResolvedValue({ company: "Extracted Company", position: "Engineer", appliedDate: "2026-10-08", jobUrl: null, jobDescription: null });
+    const email = new FormData(); email.set("emailText", "Thank you for applying to Extracted Company as Engineer.");
+    const draft = await extractEmailAction(email);
+    expect(draft.values?.company).toBe("Extracted Company");
+    expect(await listApplications()).toEqual([]);
+    const confirmed = new FormData();
+    for (const [key, value] of Object.entries(draft.values!)) confirmed.set(key, value);
+    confirmed.set("company", "Reviewed Company"); confirmed.set("status", "OFFER");
+    await expect(createApplicationAction({}, confirmed)).rejects.toThrow("test redirect");
+    const records = await listApplications();
+    expect(records).toHaveLength(1);
+    expect(records[0]).toMatchObject({ company: "Reviewed Company", position: "Engineer", status: "APPLIED", appliedDate: new Date("2026-10-08T00:00:00Z") });
+  });
+  it("does not persist an incomplete reviewed form", async () => {
+    const confirmed = new FormData(); confirmed.set("company", "Example");
+    expect(await createApplicationAction({}, confirmed)).toHaveProperty("fieldErrors.position");
+    expect(await listApplications()).toEqual([]);
   });
 });

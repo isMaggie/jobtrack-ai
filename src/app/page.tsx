@@ -8,6 +8,7 @@ export default async function Home() {
   return <main className="mx-auto max-w-5xl p-6">
     <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
       <h1 className="text-3xl font-semibold">Applications</h1>
+      <Link className="text-blue-700 underline" href="/applications/import">Import from email</Link>
       <Link className="rounded bg-blue-700 px-4 py-2 text-white" href="/applications/new">Create application</Link>
     </div>
     {applications.length === 0 ? <p>No applications yet. Create your first application to get started.</p> : (

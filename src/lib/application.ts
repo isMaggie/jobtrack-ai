@@ -12,8 +12,8 @@ export const applicationStatusSchema = z.enum([
 export const applicationInputSchema = z.object({
   company: z.string().trim().min(1, "Company is required").max(200),
   position: z.string().trim().min(1, "Position is required").max(200),
-  jobDescription: z.string().optional(),
-  jobUrl: z.url({ protocol: /^https?$/ }).optional(),
+  jobDescription: z.string().max(20_000).optional(),
+  jobUrl: z.url({ protocol: /^https?$/ }).max(2_048).optional(),
   status: applicationStatusSchema.default("APPLIED"),
   // Persistence uses the UTC calendar day and returns midnight UTC.
   appliedDate: z.date(),

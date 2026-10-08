@@ -75,3 +75,24 @@ Do not store anything valuable in the test database. Tests run sequentially.
 Database failures cause the integration command to fail rather than skip tests.
 
 `npm start` serves the production build.
+
+## Import a confirmation email
+
+Set `OPENAI_API_KEY` in `.env.local` and restart the development server. The only
+AI dependency is the official `openai` SDK. The model is defined once as
+`EMAIL_EXTRACTION_MODEL` in `src/lib/email-extraction.ts` (currently `gpt-6.1-sol`).
+No key is needed for builds or tests; without one, import reports a configuration
+error and manual creation remains available.
+
+Choose **Import from email**, paste plain text, and select **Extract draft**. This
+sends the text to OpenAI; remove personal information you do not want to share.
+JobTrack does not persist emails or drafts, and requests use `store: false` to
+avoid storing Responses API response state. Provider data handling still applies.
+Review and edit every field, supply missing required facts, then explicitly select
+**Confirm and save application**. Only this step writes to PostgreSQL. Cancel or
+navigate away to discard a draft. Saved applications start with APPLIED status.
+
+Extraction uses a 30-second timeout and no automatic retries. Errors preserve the
+pasted text; save failures preserve edited values. No links are fetched. Unit and
+integration tests mock AI requests and need no API credentials. Playwright/E2E
+coverage is deferred; no feature flags or rate-limit infrastructure are included.
