@@ -1,7 +1,7 @@
 # JobTrack AI
 
 Next.js App Router, React, TypeScript, Tailwind CSS, and PostgreSQL.
-The homepage is a placeholder; application persistence uses plain SQL and `pg`.
+Application persistence uses plain SQL and `pg`.
 
 ## Getting started
 
@@ -40,8 +40,8 @@ npm run dev
 ```
 
 Open http://localhost:3000. Database connections are created lazily; builds do not
-need PostgreSQL. Server code can use `createApplication` and `getApplicationById`
-from `src/lib/application-repository.ts`. No UI or endpoints call them yet.
+need PostgreSQL. Use the dashboard to create applications, view details, and update
+their status. New applications start with APPLIED status.
 
 `appliedDate` is a calendar day stored as PostgreSQL `DATE`. With the existing
 JavaScript `Date` model, writes use its UTC year/month/day and reads return midnight

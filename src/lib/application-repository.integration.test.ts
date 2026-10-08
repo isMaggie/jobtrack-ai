@@ -1,7 +1,8 @@
 import { randomUUID } from "node:crypto";
 import { Client } from "pg";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { createApplication, getApplicationById } from "./application-repository";
+import { createApplication, getApplicationById, listApplications, updateApplicationStatus } from "./application-repository";
+import { type ApplicationStatus } from "./application";
 import { getPool } from "./db";
 
 const input = {
@@ -18,6 +19,35 @@ beforeEach(async () => { await getPool().query("DELETE FROM applications"); });
 afterAll(async () => { await getPool().end(); });
 
 describe("application persistence", () => {
+  it("lists an empty database and orders applications newest first with an ID tie-breaker", async () => {
+    expect(await listApplications()).toEqual([]);
+    const first = await createApplication(input);
+    const second = await createApplication({ ...input, company: "Second" });
+    await getPool().query("UPDATE applications SET created_at = $1 WHERE id = $2", ["2026-01-01T00:00:00Z", first.id]);
+    await getPool().query("UPDATE applications SET created_at = $1 WHERE id = $2", ["2026-01-02T00:00:00Z", second.id]);
+    expect((await listApplications()).map((record) => record.id)).toEqual([second.id, first.id]);
+    await getPool().query("UPDATE applications SET created_at = $1", ["2026-01-01T00:00:00Z"]);
+    expect((await listApplications()).map((record) => record.id)).toEqual([first.id, second.id].sort().reverse());
+  });
+
+  it("persists status changes and advances updatedAt without changing other fields", async () => {
+    const created = await createApplication({ ...input, jobDescription: "Description", jobUrl: "https://example.com" });
+    await getPool().query("UPDATE applications SET updated_at = $1 WHERE id = $2", ["2000-01-01T00:00:00Z", created.id]);
+    const updated = await updateApplicationStatus(created.id, "INTERVIEW");
+    expect(updated).toEqual({ ...created, status: "INTERVIEW", updatedAt: expect.any(Date) });
+    expect(updated!.updatedAt.getTime()).toBeGreaterThan(new Date("2000-01-01T00:00:00Z").getTime());
+    expect(await getApplicationById(created.id)).toEqual(updated);
+    expect(await listApplications()).toEqual([updated]);
+  });
+
+  it("returns null for missing updates and rejects invalid updates without changing data", async () => {
+    const created = await createApplication(input);
+    expect(await updateApplicationStatus(randomUUID(), "OFFER")).toBeNull();
+    await expect(updateApplicationStatus("bad", "OFFER")).rejects.toThrow();
+    await expect(updateApplicationStatus(created.id, "PENDING" as ApplicationStatus)).rejects.toThrow();
+    expect(await getApplicationById(created.id)).toEqual(created);
+  });
+
   it("creates a record with defaults and reads it through another connection", async () => {
     const created = await createApplication({ ...input, company: "  Example Company  " });
     expect(created).toMatchObject({ company: input.company, status: "APPLIED", jobDescription: undefined, jobUrl: undefined });

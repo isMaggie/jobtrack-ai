@@ -1,6 +1,6 @@
 import "server-only";
 import { randomUUID } from "node:crypto";
-import { applicationInputSchema, applicationSchema, type Application, type ApplicationInput } from "./application";
+import { applicationInputSchema, applicationSchema, applicationStatusSchema, type Application, type ApplicationInput, type ApplicationStatus } from "./application";
 import { getPool } from "./db";
 
 // Cast DATE to text so pg never interprets it in the machine's local timezone.
@@ -32,5 +32,20 @@ export async function createApplication(input: ApplicationInput): Promise<Applic
 export async function getApplicationById(id: string): Promise<Application | null> {
   const validId = applicationSchema.shape.id.parse(id);
   const result = await getPool().query(`SELECT ${columns} FROM applications WHERE id = $1`, [validId]);
+  return result.rows.length ? mapApplication(result.rows[0]) : null;
+}
+
+export async function listApplications(): Promise<Application[]> {
+  const result = await getPool().query(`SELECT ${columns} FROM applications ORDER BY created_at DESC, id DESC`);
+  return result.rows.map(mapApplication);
+}
+
+export async function updateApplicationStatus(id: string, status: ApplicationStatus): Promise<Application | null> {
+  const validId = applicationSchema.shape.id.parse(id);
+  const validStatus = applicationStatusSchema.parse(status);
+  const result = await getPool().query(
+    `UPDATE applications SET status = $2, updated_at = CURRENT_TIMESTAMP WHERE id = $1 RETURNING ${columns}`,
+    [validId, validStatus],
+  );
   return result.rows.length ? mapApplication(result.rows[0]) : null;
 }
