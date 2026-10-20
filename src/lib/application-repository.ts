@@ -49,3 +49,15 @@ export async function updateApplicationStatus(id: string, status: ApplicationSta
   );
   return result.rows.length ? mapApplication(result.rows[0]) : null;
 }
+
+// The reviewed identity and status must still be current when the user confirms.
+export async function confirmImportedStatus(id: string, status: ApplicationStatus, expectedStatus: ApplicationStatus, expectedIdentity: Pick<Application, "company" | "position">): Promise<Application | null> {
+  const result = await getPool().query(
+    `UPDATE applications SET status = $2, updated_at = CURRENT_TIMESTAMP
+     WHERE id = $1 AND status = $3 AND status <> $2
+       AND company = $4 AND position = $5 RETURNING ${columns}`,
+    [applicationSchema.shape.id.parse(id), applicationStatusSchema.parse(status), applicationStatusSchema.parse(expectedStatus),
+      applicationInputSchema.shape.company.parse(expectedIdentity.company), applicationInputSchema.shape.position.parse(expectedIdentity.position)],
+  );
+  return result.rows.length ? mapApplication(result.rows[0]) : null;
+}

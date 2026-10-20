@@ -1,11 +1,11 @@
 import { randomUUID } from "node:crypto";
 import { Client } from "pg";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { createApplication, getApplicationById, listApplications, updateApplicationStatus } from "./application-repository";
+import { createApplication, confirmImportedStatus, getApplicationById, listApplications, updateApplicationStatus } from "./application-repository";
 import { type ApplicationStatus } from "./application";
 import { getPool } from "./db";
 
-import { extractEmailAction } from "../app/applications/import/actions";
+import { confirmEmailStatusAction, matchEmailAction, extractEmailAction } from "../app/applications/import/actions";
 import { createApplicationAction } from "../app/applications/actions";
 import { extractApplicationDraft } from "./email-extraction";
 
@@ -134,7 +134,7 @@ describe("application persistence", () => {
 
 describe("email import persistence", () => {
   it("writes only after confirmation and saves the reviewed edits", async () => {
-    vi.mocked(extractApplicationDraft).mockResolvedValue({ company: "Extracted Company", position: "Engineer", appliedDate: "2026-10-08", jobUrl: null, jobDescription: null });
+    vi.mocked(extractApplicationDraft).mockResolvedValue({ emailType: "APPLICATION_CONFIRMATION", company: "Extracted Company", position: "Engineer", appliedDate: "2026-10-08", jobUrl: null, jobDescription: null });
     const email = new FormData(); email.set("emailText", "Thank you for applying to Extracted Company as Engineer.");
     const draft = await extractEmailAction(email);
     expect(draft.values?.company).toBe("Extracted Company");
@@ -151,5 +151,74 @@ describe("email import persistence", () => {
     const confirmed = new FormData(); confirmed.set("company", "Example");
     expect(await createApplicationAction({}, confirmed)).toHaveProperty("fieldErrors.position");
     expect(await listApplications()).toEqual([]);
+  });
+});
+
+
+describe("status email persistence", () => {
+  function confirmation(id: string, emailType: string, expectedStatus = "APPLIED") {
+    const data = new FormData();
+    Object.entries({ id, emailType, expectedStatus, company: input.company, position: input.position, confirm: "yes" }).forEach(([key, value]) => data.set(key, value));
+    return data;
+  }
+  it.each(["INTERVIEW", "OFFER", "REJECTION"] as const)("updates only the selected record after %s confirmation", async (emailType) => {
+    const first = await createApplication(input);
+    const second = await createApplication(input);
+    vi.mocked(extractApplicationDraft).mockResolvedValue({ emailType, company: input.company, position: input.position, appliedDate: null, jobUrl: null, jobDescription: null });
+    const email = new FormData(); email.set("emailText", "Application progress email");
+    const review = await extractEmailAction(email);
+    expect(review.matches).toHaveLength(2);
+    expect(await getApplicationById(first.id)).toEqual(first);
+    expect(await getApplicationById(second.id)).toEqual(second);
+    const data = confirmation(second.id, emailType);
+    expect((await matchEmailAction(data)).matches).toHaveLength(2);
+    expect(await confirmEmailStatusAction(data)).toEqual({ message: "Status updated." });
+    expect(await getApplicationById(first.id)).toEqual(first);
+    const updated = await getApplicationById(second.id);
+    expect(updated).toEqual({ ...second, status: emailType === "REJECTION" ? "REJECTED" : emailType, updatedAt: expect.any(Date) });
+    expect(updated!.updatedAt.getTime()).toBeGreaterThanOrEqual(second.updatedAt.getTime());
+    data.set("expectedStatus", updated!.status);
+    expect(await confirmEmailStatusAction(data)).toMatchObject({ message: expect.stringContaining("Already") });
+    expect(await getApplicationById(second.id)).toEqual(updated);
+  });
+  it("rejects stale proposals and missing explicit confirmation without writing", async () => {
+    const created = await createApplication(input);
+    const data = confirmation(created.id, "OFFER"); data.delete("confirm");
+    expect(await confirmEmailStatusAction(data)).toHaveProperty("error");
+    expect(await getApplicationById(created.id)).toEqual(created);
+    await updateApplicationStatus(created.id, "REJECTED");
+    data.set("confirm", "yes");
+    expect(await confirmEmailStatusAction(data)).toHaveProperty("error");
+    expect((await getApplicationById(created.id))!.status).toBe("REJECTED");
+  });
+});
+
+
+describe("email lifecycle safeguards", () => {
+  it.each(["INTERVIEW", "OTHER"] as const)("does not persist %s analysis without a match", async (emailType) => {
+    vi.mocked(extractApplicationDraft).mockResolvedValue({ emailType, company: input.company, position: input.position, appliedDate: null, jobUrl: null, jobDescription: null });
+    const data = new FormData(); data.set("emailText", "Application email");
+    const result = await extractEmailAction(data);
+    expect(result.emailType).toBe(emailType);
+    if (emailType === "INTERVIEW") expect(result.matches).toEqual([]);
+    expect(await listApplications()).toEqual([]);
+  });
+  it("rejects changes occurring after the review read", async () => {
+    const created = await createApplication(input);
+    await updateApplicationStatus(created.id, "REJECTED");
+    expect(await confirmImportedStatus(created.id, "OFFER", "APPLIED", created)).toBeNull();
+    expect((await getApplicationById(created.id))!.status).toBe("REJECTED");
+    await updateApplicationStatus(created.id, "APPLIED");
+    await getPool().query("UPDATE applications SET company = $1 WHERE id = $2", ["Different Company", created.id]);
+    expect(await confirmImportedStatus(created.id, "OFFER", "APPLIED", created)).toBeNull();
+    expect((await getApplicationById(created.id))!.status).toBe("APPLIED");
+    await getPool().query("UPDATE applications SET company = $1, position = $2 WHERE id = $3", [created.company, "Different Position", created.id]);
+    expect(await confirmImportedStatus(created.id, "OFFER", "APPLIED", created)).toBeNull();
+    expect((await getApplicationById(created.id))!.status).toBe("APPLIED");
+  });
+  it("does not touch timestamps when the conditional write is a no-op", async () => {
+    const created = await createApplication(input);
+    expect(await confirmImportedStatus(created.id, "APPLIED", "APPLIED", created)).toBeNull();
+    expect(await getApplicationById(created.id)).toEqual(created);
   });
 });

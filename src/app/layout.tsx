@@ -13,10 +13,10 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body>
-        <header className="border-b">
-          <nav aria-label="Main navigation" className="mx-auto flex max-w-5xl gap-6 p-6">
-            <Link className="font-semibold" href="/">JobTrack AI</Link>
-            <Link className="text-blue-700 underline" href="/">Dashboard</Link>
+        <header className="border-b border-slate-200 bg-white">
+          <nav aria-label="Main navigation" className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-4 px-4 py-5 sm:px-6">
+            <Link className="rounded-sm text-lg font-bold tracking-tight" href="/">JobTrack AI</Link>
+            <Link className="text-link text-sm" href="/">Dashboard</Link>
           </nav>
         </header>
         {children}

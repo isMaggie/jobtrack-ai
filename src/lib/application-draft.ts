@@ -1,11 +1,12 @@
 import { z } from "zod";
+import { emailTypeSchema, type EmailType, type ImportMatch } from "./email-import";
 import { applicationInputSchema } from "./application";
 import { calendarDateSchema } from "./calendar-date";
 import { applicationFormFields, type ApplicationFormValues } from "./application-form";
 
 export const MAX_EMAIL_LENGTH = 20_000;
 export const emailInputSchema = z.strictObject({
-  emailText: z.string().max(MAX_EMAIL_LENGTH, "Email must be 20,000 characters or fewer").trim().min(1, "Paste a confirmation email"),
+  emailText: z.string().max(MAX_EMAIL_LENGTH, "Email must be 20,000 characters or fewer").trim().min(1, "Paste an email"),
 });
 
 export const applicationDraftSchema = z.strictObject({
@@ -15,8 +16,9 @@ export const applicationDraftSchema = z.strictObject({
   jobUrl: applicationInputSchema.shape.jobUrl.unwrap().nullable(),
   jobDescription: applicationInputSchema.shape.jobDescription.unwrap().nullable(),
 });
+export const classifiedDraftSchema = applicationDraftSchema.extend({ emailType: emailTypeSchema });
 export type ApplicationDraft = z.infer<typeof applicationDraftSchema>;
-export type EmailImportState = { values?: ApplicationFormValues; message?: string; error?: string };
+export type EmailImportState = { values?: ApplicationFormValues; message?: string; error?: string; emailType?: EmailType; matches?: ImportMatch[] };
 
 export function draftToFormValues(draft: ApplicationDraft): ApplicationFormValues {
   return Object.fromEntries(applicationFormFields.map((field) => [field, draft[field] ?? ""])) as ApplicationFormValues;

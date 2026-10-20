@@ -96,3 +96,14 @@ Extraction uses a 30-second timeout and no automatic retries. Errors preserve th
 pasted text; save failures preserve edited values. No links are fetched. Unit and
 integration tests mock AI requests and need no API credentials. Playwright/E2E
 coverage is deferred; no feature flags or rate-limit infrastructure are included.
+
+Email import supports pasted application confirmations, interview invitations,
+offers, and rejections. Analyze email classifies the message and proposes a change;
+it never writes to the database. Confirmations open an editable new application
+starting as Applied. Other supported events match existing applications by company
+and position, ignoring case and repeated whitespace. Correct these fields and use
+Find matches if needed. When several records match, select one using the radio list.
+Review the current and proposed statuses, then explicitly confirm the update.
+Unrelated or ambiguous messages propose no change. Stale status proposals require
+matching and review again. Emails and pending proposals are not stored by JobTrack.
+Browser E2E testing is deferred until manual verification of this feature.

@@ -4,10 +4,19 @@ import { extractApplicationDraft, EMAIL_EXTRACTION_MODEL } from "./email-extract
 
 const { parse } = vi.hoisted(() => ({ parse: vi.fn() }));
 vi.mock("openai", async (importOriginal) => ({ ...await importOriginal<typeof import("openai")>(), default: vi.fn(class { responses = { parse }; }) }));
-const draft = { company: "Example", position: "Engineer", appliedDate: "2026-10-08", jobUrl: null, jobDescription: null };
+const draft = { emailType: "APPLICATION_CONFIRMATION" as const, company: "Example", position: "Engineer", appliedDate: "2026-10-08", jobUrl: null, jobDescription: null };
 beforeEach(() => { vi.clearAllMocks(); vi.stubEnv("OPENAI_API_KEY", "test-only-key"); });
 afterEach(() => { vi.unstubAllEnvs(); vi.restoreAllMocks(); });
 describe("server extraction", () => {
+  it.each(["APPLICATION_CONFIRMATION", "INTERVIEW", "OFFER", "REJECTION", "OTHER"] as const)("validates structured %s classification", async (emailType) => {
+    parse.mockResolvedValue({ status: "completed", output_parsed: { ...draft, emailType } });
+    expect(await extractApplicationDraft("Application email")).toEqual({ ...draft, emailType });
+  });
+  it("rejects unknown email classifications", async () => {
+    parse.mockResolvedValue({ status: "completed", output_parsed: { ...draft, emailType: "UNKNOWN" } });
+    await expect(extractApplicationDraft("Application email")).rejects.toThrow();
+  });
+
   it("logs only safe provider metadata in development", async () => {
     vi.stubEnv("NODE_ENV", "development");
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});

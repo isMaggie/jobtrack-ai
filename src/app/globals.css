@@ -1,7 +1,27 @@
 @import "tailwindcss";
 
 body {
-  background: #ffffff;
-  color: #171717;
+  background: #f8fafc;
+  color: #0f172a;
   font-family: Arial, Helvetica, sans-serif;
+}
+
+@layer components {
+  .button-primary {
+    @apply inline-flex min-h-11 items-center justify-center rounded-lg bg-blue-700 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-blue-800 disabled:cursor-not-allowed disabled:opacity-60;
+  }
+  .button-secondary {
+    @apply inline-flex min-h-11 items-center justify-center rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50;
+  }
+  .text-link {
+    @apply rounded-sm font-medium text-blue-700 underline decoration-blue-200 underline-offset-4 hover:decoration-blue-700;
+  }
+  .form-control {
+    @apply block min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-base text-slate-900 shadow-sm aria-invalid:border-red-600 disabled:bg-slate-100;
+  }
+}
+
+:where(a, button, input, select, textarea):focus-visible {
+  outline: 2px solid #2563eb;
+  outline-offset: 3px;
 }

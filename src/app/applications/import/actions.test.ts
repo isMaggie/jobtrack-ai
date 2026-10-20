@@ -3,12 +3,12 @@ import { extractEmailAction } from "./actions";
 import { extractApplicationDraft } from "../../../lib/email-extraction";
 import { createApplication } from "../../../lib/application-repository";
 vi.mock("../../../lib/email-extraction", () => ({ extractApplicationDraft: vi.fn() }));
-vi.mock("../../../lib/application-repository", () => ({ createApplication: vi.fn() }));
+vi.mock("../../../lib/application-repository", () => ({ createApplication: vi.fn(), updateApplicationStatus: vi.fn(), confirmImportedStatus: vi.fn(), getApplicationById: vi.fn(), listApplications: vi.fn(async () => []) }));
 function form(emailText = "Thank you for applying to Example as Engineer.") { const data = new FormData(); data.set("emailText", emailText); return data; }
-beforeEach(() => vi.resetAllMocks());
+beforeEach(() => { vi.clearAllMocks(); });
 describe("email import action", () => {
   it("returns an editable draft without writing", async () => {
-    vi.mocked(extractApplicationDraft).mockResolvedValue({ company: "Example", position: null, appliedDate: null, jobUrl: null, jobDescription: null });
+    vi.mocked(extractApplicationDraft).mockResolvedValue({ emailType: "APPLICATION_CONFIRMATION", company: "Example", position: null, appliedDate: null, jobUrl: null, jobDescription: null });
     expect(await extractEmailAction(form())).toMatchObject({ values: { company: "Example", position: "", appliedDate: "" }, message: expect.stringContaining("Nothing has been saved") });
     expect(createApplication).not.toHaveBeenCalled();
   });
@@ -22,7 +22,7 @@ describe("email import action", () => {
     expect(extractApplicationDraft).not.toHaveBeenCalled();
   });
   it("validates output even at the action boundary", async () => {
-    vi.mocked(extractApplicationDraft).mockResolvedValue({ company: "Example", position: null, appliedDate: "2026-02-30", jobUrl: null, jobDescription: null });
+    vi.mocked(extractApplicationDraft).mockResolvedValue({ emailType: "APPLICATION_CONFIRMATION", company: "Example", position: null, appliedDate: "2026-02-30", jobUrl: null, jobDescription: null });
     expect(await extractEmailAction(form())).not.toHaveProperty("values");
     expect(createApplication).not.toHaveBeenCalled();
   });
