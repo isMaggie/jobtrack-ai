@@ -94,8 +94,8 @@ navigate away to discard a draft. Saved applications start with APPLIED status.
 
 Extraction uses a 30-second timeout and no automatic retries. Errors preserve the
 pasted text; save failures preserve edited values. No links are fetched. Unit and
-integration tests mock AI requests and need no API credentials. Playwright/E2E
-coverage is deferred; no feature flags or rate-limit infrastructure are included.
+integration tests mock AI requests and need no API credentials. Browser workflows are covered by the Playwright suite below; no feature flags or
+rate-limit infrastructure are included.
 
 Email import supports pasted application confirmations, interview invitations,
 offers, and rejections. Analyze email classifies the message and proposes a change;
@@ -106,4 +106,57 @@ Find matches if needed. When several records match, select one using the radio l
 Review the current and proposed statuses, then explicitly confirm the update.
 Unrelated or ambiguous messages propose no change. Stale status proposals require
 matching and review again. Emails and pending proposals are not stored by JobTrack.
-Browser E2E testing is deferred until manual verification of this feature.
+Critical browser workflows are covered by Playwright.
+
+## Browser E2E tests
+
+The five Playwright tests cover manual creation, manual status updates, confirmation
+email review and save, status email review and confirmation, and combined discard/back
+safeguards. They use Chromium, one worker, and real Next.js Server Actions and SQL.
+The Playwright version is pinned to 1.56.1 for this project's macOS 13 development
+machine. Revisit the pin when upgrading the operating system.
+
+After `npm ci`, install the browser once:
+
+```sh
+npx playwright install chromium
+npm run test:e2e
+```
+
+Keep PostgreSQL running and configure `TEST_DATABASE_URL` in `.env.test.local`.
+The runner verifies that the actual connected database is `jobtrack_ai_test` before
+migrating. Database helpers repeat that check before clearing or seeding data.
+**The suite deletes application rows in the test database.** Do not run it alongside
+integration tests or another E2E run, and never store valuable data there.
+
+Use `npm run test:e2e`, rather than invoking Playwright directly: the runner sets the
+app's database URL explicitly and overrides AI credentials with a dummy key and
+`OPENAI_BASE_URL=http://127.0.0.1:3101/v1`. The existing OpenAI SDK supports this
+variable, so application code needs no testing abstraction. A small local HTTP
+server returns fixed structured responses for the two test email fixtures and
+rejects unexpected requests. No real OpenAI API is called and no real key is needed.
+
+Playwright starts a fresh Webpack development server on port 3100 and the fake
+provider on 3101; both ports must be free. It refuses to reuse an existing app
+server, and shuts down its servers after the run. Each test starts with an empty
+test database and seeds any prerequisites independently. Existing development
+servers should be stopped to avoid sharing Next.js build output.
+
+Failed tests retain screenshots and traces under the ignored `test-results/`
+directory. To inspect a trace, run `npx playwright show-trace` with its `trace.zip`
+path. To run one test, pass a title filter through the guarded runner:
+
+```sh
+npm run test:e2e -- --grep "review confirmation email"
+```
+
+Run checks sequentially (the database suites share the test database):
+
+```sh
+npm test
+npm run test:integration
+npm run test:e2e
+npm run lint
+npm run build -- --webpack
+npm run typecheck
+```
