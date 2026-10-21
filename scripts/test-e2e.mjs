@@ -18,7 +18,7 @@ try {
 const child = spawn(process.execPath, ["node_modules/@playwright/test/cli.js", "test", ...process.argv.slice(2)], {
   stdio: "inherit",
   env: { ...process.env, DATABASE_URL: connectionString, TEST_DATABASE_URL: connectionString,
-    OPENAI_API_KEY: "e2e-dummy-key", OPENAI_BASE_URL: "http://127.0.0.1:3101/v1" },
+    APP_ACCESS_PASSWORD: "e2e-only-password", OPENAI_API_KEY: "e2e-dummy-key", OPENAI_BASE_URL: "http://127.0.0.1:3101/v1" },
 });
 for (const signal of ["SIGINT", "SIGTERM"]) process.on(signal, () => child.kill(signal));
 child.on("error", (error) => { console.error(error); process.exitCode = 1; });

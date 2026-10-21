@@ -1,5 +1,6 @@
 "use server";
 
+import { requireAppAccess } from "../../../lib/access";
 import { revalidatePath } from "next/cache";
 import { applicationSchema, applicationStatusSchema } from "../../../lib/application";
 import { classifiedDraftSchema, draftReviewMessage, draftToFormValues, emailInputSchema, type EmailImportState } from "../../../lib/application-draft";
@@ -16,6 +17,7 @@ async function findMatches(company: string, position: string) {
 
 // Analysis and matching are read-only. Only confirmation actions may write.
 export async function extractEmailAction(formData: FormData): Promise<EmailImportState> {
+  await requireAppAccess();
   const input = emailInputSchema.safeParse({ emailText: formData.get("emailText") });
   if (!input.success) return { error: input.error.issues[0].message };
   try {
@@ -25,6 +27,7 @@ export async function extractEmailAction(formData: FormData): Promise<EmailImpor
     return { emailType: draft.emailType, values: draftToFormValues(draft), matches,
       message: draft.emailType === "APPLICATION_CONFIRMATION" ? `${draftReviewMessage(draft)}${matches.length ? " An application with this company and position already exists. Confirm only if you want another application." : ""}` : "Review the matching application and proposed status. Nothing has been saved." };
   } catch (error) {
+    console.error("Email analysis or application lookup failed");
     if (error instanceof Error && error.message === "AI_NOT_CONFIGURED") {
       return { error: "Email extraction is not configured. You can create an application manually." };
     }
@@ -33,14 +36,19 @@ export async function extractEmailAction(formData: FormData): Promise<EmailImpor
 }
 
 export async function matchEmailAction(formData: FormData): Promise<EmailImportState> {
+  await requireAppAccess();
   const input = matchInputSchema.safeParse(Object.fromEntries(["company", "position", "emailType"].map((key) => [key, formData.get(key)])));
   if (!input.success || !proposedStatus(input.data.emailType)) return { error: "Enter a company and position for a supported status email." };
   try {
     return { matches: await findMatches(input.data.company, input.data.position), message: "Matches refreshed. Nothing has been saved." };
-  } catch { return { error: "Couldn’t find applications. Try again." }; }
+  } catch {
+    console.error("Email application matching failed");
+    return { error: "Couldn’t find applications. Try again." };
+  }
 }
 
 export async function confirmEmailStatusAction(formData: FormData): Promise<{ error?: string; message?: string }> {
+  await requireAppAccess();
   const input = matchInputSchema.safeParse(Object.fromEntries(["company", "position", "emailType"].map((key) => [key, formData.get(key)])));
   const id = applicationSchema.shape.id.safeParse(formData.get("id"));
   const expected = applicationStatusSchema.safeParse(formData.get("expectedStatus"));
@@ -57,5 +65,8 @@ export async function confirmEmailStatusAction(formData: FormData): Promise<{ er
     revalidatePath("/");
     revalidatePath(`/applications/${id.data}`);
     return { message: "Status updated." };
-  } catch { return { error: "Couldn’t update the status. Try again." }; }
+  } catch {
+    console.error("Email status confirmation failed");
+    return { error: "Couldn’t update the status. Try again." };
+  }
 }

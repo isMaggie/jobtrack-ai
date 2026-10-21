@@ -99,3 +99,16 @@ test("discard and back leave drafts and proposed status changes unsaved", async 
   await expect(page.getByLabel("Update status")).toHaveValue("APPLIED");
   expect(await applications()).toEqual(before);
 });
+
+test("rejects unauthenticated page and action requests", async ({ playwright }) => {
+  const anonymous = await playwright.request.newContext({ baseURL: "http://127.0.0.1:3100", httpCredentials: undefined });
+  try {
+    for (const path of ["/", "/applications/import"]) {
+      const response = await anonymous.get(path);
+      expect(response.status()).toBe(401);
+      expect(response.headers()["www-authenticate"]).toContain("Basic");
+    }
+    const response = await anonymous.post("/applications/import", { headers: { "Next-Action": "unauthorized-test" }, form: { emailText: "Must not reach provider" } });
+    expect(response.status()).toBe(401);
+  } finally { await anonymous.dispose(); }
+});

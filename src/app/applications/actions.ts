@@ -1,5 +1,6 @@
 "use server";
 
+import { requireAppAccess } from "../../lib/access";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { applicationSchema, applicationStatusSchema } from "../../lib/application";
@@ -7,6 +8,7 @@ import { parseApplicationForm, type ApplicationFormState, type StatusFormState }
 import { createApplication, updateApplicationStatus } from "../../lib/application-repository";
 
 export async function createApplicationAction(_previousState: ApplicationFormState, formData: FormData): Promise<ApplicationFormState> {
+  await requireAppAccess();
   const parsed = parseApplicationForm(formData);
   if (!parsed.success) return { values: parsed.values, fieldErrors: parsed.fieldErrors, message: "Please correct the highlighted fields." };
 
@@ -22,6 +24,7 @@ export async function createApplicationAction(_previousState: ApplicationFormSta
 }
 
 export async function updateApplicationStatusAction(id: string, _previousState: StatusFormState, formData: FormData): Promise<StatusFormState> {
+  await requireAppAccess();
   const validId = applicationSchema.shape.id.safeParse(id);
   const status = applicationStatusSchema.safeParse(formData.get("status"));
   if (!validId.success) return { error: "Invalid application ID." };

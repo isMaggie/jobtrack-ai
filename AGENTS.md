@@ -12,7 +12,6 @@ The MVP helps users:
 - Update application progress
 
 Future versions may support:
-- Extracting job application information from confirmation emails
 - Gmail integration
 - AI-powered job description analysis
 - Follow-up reminders
@@ -27,8 +26,10 @@ For the first version, implement only:
 4. Update application status
 5. Store job descriptions
 6. Persistent data storage
+7. Pasted email analysis with editable confirmation drafts and explicitly confirmed status updates
+8. Shared-password access protection for personal deployment
 
-Do not implement Gmail integration, authentication, resume matching,
+Do not implement Gmail integration, a full authentication/account system, resume matching,
 or notification systems unless explicitly requested.
 
 ## Tech Stack

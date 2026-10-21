@@ -17,8 +17,8 @@ describe("server extraction", () => {
     await expect(extractApplicationDraft("Application email")).rejects.toThrow();
   });
 
-  it("logs only safe provider metadata in development", async () => {
-    vi.stubEnv("NODE_ENV", "development");
+  it.each(["development", "production"])("logs only safe provider metadata in %s", async (environment) => {
+    vi.stubEnv("NODE_ENV", environment);
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     const secret = "secret-key-and-private-email";
     const error = new APIError(429, { code: secret, param: secret, message: secret }, secret, new Headers({ "x-private": secret }));
@@ -30,12 +30,13 @@ describe("server extraction", () => {
     });
     expect(JSON.stringify(warn.mock.calls)).not.toContain(secret);
   });
-  it("does not log diagnostics in production", async () => {
+  it("logs only safe diagnostic categories in production", async () => {
     vi.stubEnv("NODE_ENV", "production");
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     parse.mockRejectedValue(new Error("private provider message"));
     await expect(extractApplicationDraft("private email")).rejects.toThrow();
-    expect(warn).not.toHaveBeenCalled();
+    expect(warn).toHaveBeenCalledWith("[email-extraction] failed", expect.objectContaining({ stage: "provider_request", failure: "response_or_transport" }));
+    expect(JSON.stringify(warn.mock.calls)).not.toContain("private");
   });
   it("identifies domain validation failures without logging draft values", async () => {
     vi.stubEnv("NODE_ENV", "development");

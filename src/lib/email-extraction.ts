@@ -38,20 +38,18 @@ export async function extractApplicationDraft(emailText: string) {
     stage = "domain_validation";
     return classifiedDraftSchema.parse(response.output_parsed);
   } catch (error) {
-    if (process.env.NODE_ENV === "development") {
-      // Never log error messages, bodies, headers, inputs, or extracted values.
-      // Provider metadata is allowlisted because arbitrary strings may echo input.
-      const codes = ["model_not_found", "invalid_api_key", "insufficient_quota", "rate_limit_exceeded", "unsupported_parameter", "invalid_value", "invalid_json_schema"];
-      const params = ["model", "reasoning.effort", "max_output_tokens", "text.format", "text.format.schema"];
-      console.warn("[email-extraction] failed", {
-        stage,
-        model: EMAIL_EXTRACTION_MODEL,
-        status: error instanceof APIError ? error.status : undefined,
-        code: error instanceof APIError && codes.includes(error.code ?? "") ? error.code : undefined,
-        param: error instanceof APIError && params.includes(error.param ?? "") ? error.param : undefined,
-        failure: error instanceof APIError ? "provider" : error instanceof z.ZodError ? "validation" : error instanceof SyntaxError ? "json_parse" : "response_or_transport",
-      });
-    }
+    // Never log error messages, bodies, headers, inputs, or extracted values.
+    // Provider metadata is allowlisted because arbitrary strings may echo input.
+    const codes = ["model_not_found", "invalid_api_key", "insufficient_quota", "rate_limit_exceeded", "unsupported_parameter", "invalid_value", "invalid_json_schema"];
+    const params = ["model", "reasoning.effort", "max_output_tokens", "text.format", "text.format.schema"];
+    console.warn("[email-extraction] failed", {
+      stage,
+      model: EMAIL_EXTRACTION_MODEL,
+      status: error instanceof APIError && typeof error.status === "number" ? error.status : undefined,
+      code: error instanceof APIError && codes.includes(error.code ?? "") ? error.code : undefined,
+      param: error instanceof APIError && params.includes(error.param ?? "") ? error.param : undefined,
+      failure: error instanceof APIError ? "provider" : error instanceof z.ZodError ? "validation" : error instanceof SyntaxError ? "json_parse" : "response_or_transport",
+    });
     throw error;
   }
 }

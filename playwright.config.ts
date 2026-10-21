@@ -9,6 +9,7 @@ export default defineConfig({
   expect: { timeout: 15_000 },
   use: {
     browserName: "chromium",
+    httpCredentials: { username: "jobtrack", password: "e2e-only-password" },
     baseURL: "http://127.0.0.1:3100",
     viewport: { width: 1280, height: 800 },
     screenshot: "only-on-failure",

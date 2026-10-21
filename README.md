@@ -110,9 +110,9 @@ Critical browser workflows are covered by Playwright.
 
 ## Browser E2E tests
 
-The five Playwright tests cover manual creation, manual status updates, confirmation
-email review and save, status email review and confirmation, and combined discard/back
-safeguards. They use Chromium, one worker, and real Next.js Server Actions and SQL.
+The six Playwright tests cover manual creation, manual status updates, confirmation
+email review and save, status email review and confirmation, combined discard/back
+safeguards, and rejection of unauthenticated page and action requests. They use Chromium, one worker, and real Next.js Server Actions and SQL.
 The Playwright version is pinned to 1.56.1 for this project's macOS 13 development
 machine. Revisit the pin when upgrading the operating system.
 
@@ -160,3 +160,24 @@ npm run lint
 npm run build -- --webpack
 npm run typecheck
 ```
+
+## Personal deployment
+
+Set `APP_ACCESS_PASSWORD` to a long random secret in the hosting environment.
+Open the app and enter username `jobtrack` and that password in the browser prompt.
+Production refuses requests with HTTP 503 if the password is missing or blank;
+incorrect or missing credentials return HTTP 401. Local development can omit it.
+This is a single-user access gate, with no accounts or sessions. Use HTTPS in
+production because Basic Auth sends credentials with requests. Browsers remember
+credentials; close the browser session to clear them.
+
+Set the production `DATABASE_URL` using your PostgreSQL provider's required TLS
+settings, run `npm run db:migrate` once, then build with
+`npm run build -- --webpack` and serve with `npm start` (or the host equivalent).
+The pool allows five connections per process and waits at most five seconds for
+a connection. Set `OPENAI_API_KEY` for email analysis. Keep all three variables
+server-only and never deploy the E2E dummy credentials or local provider URL.
+
+Production email failures log fixed operation names and allowlisted diagnostic
+categories only. Email text, extracted fields, credentials, raw provider errors,
+and database connection strings are never included in these diagnostics.
