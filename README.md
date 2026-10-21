@@ -1,156 +1,77 @@
 # JobTrack AI
 
-Next.js App Router, React, TypeScript, Tailwind CSS, and PostgreSQL.
-Application persistence uses plain SQL and `pg`.
+A full-stack job application tracker that turns pasted recruiting emails into editable application drafts and reviewed status updates.
 
-## Getting started
+JobTrack AI keeps company details, job descriptions, and application progress in one place. AI helps extract information; users review and explicitly confirm every application creation or status change. The app is designed for personal deployment with shared-password access.
 
-Use Node.js 24 (specified in `.nvmrc`):
+## Key features
 
-```sh
-nvm use
-npm ci
+- **Application dashboard:** View saved applications and their current status.
+- **Manual application entry:** Store company, position, application date, job URL, and job description.
+- **Application details and progress:** View individual records and update their status to Applied, Interview, Offer, Rejected, or Withdrawn.
+- **Email-assisted tracking:** Paste confirmations, interview invitations, offers, or rejections to prepare a new application or propose an update to an existing one.
+- **Review before saving:** Edit extracted fields, resolve matching applications, and explicitly confirm changes.
+- **Persistent storage and personal access:** PostgreSQL stores application records; a shared password protects the deployed app.
+
+## Architecture
+
+```text
+React UI / Next.js App Router
+          |
+          v
+Next.js Server Actions
+          |
+          v
+Input validation and business logic
+          |
+          +-- Email analysis --> OpenAI --> Validated review draft
+          |
+          +-- Confirmed write --> SQL repository --> PostgreSQL
 ```
 
-## Local PostgreSQL
+React components handle forms and review screens. Server Actions validate input, enforce access checks, and coordinate database operations. Business rules and persistence live in `src/lib`, separate from UI components in `src/components`.
 
-On macOS, install [Postgres.app](https://postgresapp.com/documentation/install.html),
-open it, initialize the server, and configure its command-line tools as documented.
-Keep it running while using the application or integration tests.
+The repository uses plain SQL through `pg`, with numbered SQL migrations under `db/migrations`. This keeps the data model and queries explicit without adding an ORM. Server-side database connections are pooled and created lazily, so builds do not require a running database.
 
-Connect with `psql postgres` using your local administrative account, then create
-an application role and two databases (choose your own local password):
+## Tech stack
 
-```sql
-CREATE ROLE jobtrack LOGIN PASSWORD 'replace-with-your-local-password';
-CREATE DATABASE jobtrack_ai OWNER jobtrack;
-CREATE DATABASE jobtrack_ai_test OWNER jobtrack;
-```
+| Area | Technologies |
+| --- | --- |
+| Frontend | React, Next.js App Router, TypeScript, Tailwind CSS |
+| Server and validation | Next.js Server Actions, Zod |
+| Persistence | PostgreSQL, `pg`, SQL migrations |
+| AI | OpenAI Responses API, official OpenAI SDK, structured outputs |
+| Testing | Vitest, Playwright, PostgreSQL integration tests |
+| Deployment | Vercel, Neon, OpenAI |
 
-Copy `.env.example` to `.env.local` for development and `.env.test.local` for tests.
-Set `DATABASE_URL` in `.env.local` and `TEST_DATABASE_URL` in `.env.test.local`
-using your role/password. URL-encode special characters in passwords. These files
-are ignored by Git; never commit real credentials or use `NEXT_PUBLIC_` for them.
+## AI workflow
 
-Apply migrations, then start Next.js:
+1. **Paste an email.** The server validates the input and sends its text to OpenAI.
+2. **Classify and extract.** Structured output identifies the email event and available application facts. Zod validates the result against application rules.
+3. **Review the proposal.** Confirmations produce an editable application draft. Interview, offer, and rejection emails propose a status update after matching an existing application by company and position, ignoring case and repeated whitespace.
+4. **Confirm the write.** Supply missing fields, correct extracted values, or select among matching records before explicitly saving or confirming an update. New applications start as Applied.
 
-```sh
-npm run db:migrate
-npm run dev
-```
+Analysis alone never writes to the database. Unrelated or ambiguous emails propose no change, and stale status proposals require matching and review again. Canceling or navigating away discards the pending draft.
 
-Open http://localhost:3000. Database connections are created lazily; builds do not
-need PostgreSQL. Use the dashboard to create applications, view details, and update
-their status. New applications start with APPLIED status.
+JobTrack does not persist pasted emails or pending proposals. Requests use `store: false` to avoid storing Responses API response state; OpenAI's data-handling policies still apply. Remove personal information you do not want to send. No links in the email are fetched.
 
-`appliedDate` is a calendar day stored as PostgreSQL `DATE`. With the existing
-JavaScript `Date` model, writes use its UTC year/month/day and reads return midnight
-UTC. Construct calendar inputs using `new Date("2026-10-07T00:00:00Z")`; format them
-using UTC rather than local-time getters. Creation timestamps retain their time.
-Future update queries must explicitly set `updated_at = CURRENT_TIMESTAMP`.
+The extraction request has a 30-second timeout and no automatic retries. Errors preserve pasted text or edited form values. Manual entry remains available without an API key. The model is configured in `src/lib/email-extraction.ts`.
 
-## Migrations
+## Testing
 
-Add numbered SQL files under `db/migrations`, then run `npm run db:migrate`.
-The runner records applied filenames in `schema_migrations` and runs each new file
-in a transaction. Re-running skips applied files. Do not edit applied migrations;
-add another file for changes. Run only one migration runner at a time. Database
-creation is a separate one-time setup step.
+- **Unit tests:** Validation, form parsing, application rules, email proposal handling, and access protection.
+- **Integration tests:** Repository behavior against real PostgreSQL.
+- **Browser E2E tests:** Manual creation and status updates, email draft review and save, confirmed email status updates, discard/back safeguards, and unauthenticated request rejection.
 
-## Checks
+AI requests are mocked in unit and integration tests. Playwright uses real Server Actions and SQL with a local HTTP provider stub, so no tests require a real OpenAI key or call the live API.
 
-```sh
-npm test
-npm run test:integration
-npm run lint
-npm run build
-npm run typecheck
-```
-
-Unit tests require no database. Integration tests require the existing
-`jobtrack_ai_test` database and `TEST_DATABASE_URL`; they never fall back to the
-development URL. The runner verifies the connected database name before migrating,
-and the tests verify it again before clearing application rows between tests.
-Do not store anything valuable in the test database. Tests run sequentially.
-Database failures cause the integration command to fail rather than skip tests.
-
-`npm start` serves the production build.
-
-## Import a confirmation email
-
-Set `OPENAI_API_KEY` in `.env.local` and restart the development server. The only
-AI dependency is the official `openai` SDK. The model is defined once as
-`EMAIL_EXTRACTION_MODEL` in `src/lib/email-extraction.ts` (currently `gpt-6.1-sol`).
-No key is needed for builds or tests; without one, import reports a configuration
-error and manual creation remains available.
-
-Choose **Import from email**, paste plain text, and select **Extract draft**. This
-sends the text to OpenAI; remove personal information you do not want to share.
-JobTrack does not persist emails or drafts, and requests use `store: false` to
-avoid storing Responses API response state. Provider data handling still applies.
-Review and edit every field, supply missing required facts, then explicitly select
-**Confirm and save application**. Only this step writes to PostgreSQL. Cancel or
-navigate away to discard a draft. Saved applications start with APPLIED status.
-
-Extraction uses a 30-second timeout and no automatic retries. Errors preserve the
-pasted text; save failures preserve edited values. No links are fetched. Unit and
-integration tests mock AI requests and need no API credentials. Browser workflows are covered by the Playwright suite below; no feature flags or
-rate-limit infrastructure are included.
-
-Email import supports pasted application confirmations, interview invitations,
-offers, and rejections. Analyze email classifies the message and proposes a change;
-it never writes to the database. Confirmations open an editable new application
-starting as Applied. Other supported events match existing applications by company
-and position, ignoring case and repeated whitespace. Correct these fields and use
-Find matches if needed. When several records match, select one using the radio list.
-Review the current and proposed statuses, then explicitly confirm the update.
-Unrelated or ambiguous messages propose no change. Stale status proposals require
-matching and review again. Emails and pending proposals are not stored by JobTrack.
-Critical browser workflows are covered by Playwright.
-
-## Browser E2E tests
-
-The six Playwright tests cover manual creation, manual status updates, confirmation
-email review and save, status email review and confirmation, combined discard/back
-safeguards, and rejection of unauthenticated page and action requests. They use Chromium, one worker, and real Next.js Server Actions and SQL.
-The Playwright version is pinned to 1.56.1 for this project's macOS 13 development
-machine. Revisit the pin when upgrading the operating system.
-
-After `npm ci`, install the browser once:
+After installing dependencies, install Chromium once:
 
 ```sh
 npx playwright install chromium
-npm run test:e2e
 ```
 
-Keep PostgreSQL running and configure `TEST_DATABASE_URL` in `.env.test.local`.
-The runner verifies that the actual connected database is `jobtrack_ai_test` before
-migrating. Database helpers repeat that check before clearing or seeding data.
-**The suite deletes application rows in the test database.** Do not run it alongside
-integration tests or another E2E run, and never store valuable data there.
-
-Use `npm run test:e2e`, rather than invoking Playwright directly: the runner sets the
-app's database URL explicitly and overrides AI credentials with a dummy key and
-`OPENAI_BASE_URL=http://127.0.0.1:3101/v1`. The existing OpenAI SDK supports this
-variable, so application code needs no testing abstraction. A small local HTTP
-server returns fixed structured responses for the two test email fixtures and
-rejects unexpected requests. No real OpenAI API is called and no real key is needed.
-
-Playwright starts a fresh Webpack development server on port 3100 and the fake
-provider on 3101; both ports must be free. It refuses to reuse an existing app
-server, and shuts down its servers after the run. Each test starts with an empty
-test database and seeds any prerequisites independently. Existing development
-servers should be stopped to avoid sharing Next.js build output.
-
-Failed tests retain screenshots and traces under the ignored `test-results/`
-directory. To inspect a trace, run `npx playwright show-trace` with its `trace.zip`
-path. To run one test, pass a title filter through the guarded runner:
-
-```sh
-npm run test:e2e -- --grep "review confirmation email"
-```
-
-Run checks sequentially (the database suites share the test database):
+Run checks sequentially:
 
 ```sh
 npm test
@@ -161,23 +82,81 @@ npm run build -- --webpack
 npm run typecheck
 ```
 
-## Personal deployment
+Unit tests need no database. Integration and E2E tests require `TEST_DATABASE_URL` in `.env.test.local` and verify that the connected database is named `jobtrack_ai_test` before migrating. **Both suites clear application rows in that database.** Keep it dedicated to tests, and never run the database suites concurrently.
 
-Set `APP_ACCESS_PASSWORD` to a long random secret in the hosting environment.
-Open the app and enter username `jobtrack` and that password in the browser prompt.
-Production refuses requests with HTTP 503 if the password is missing or blank;
-incorrect or missing credentials return HTTP 401. Local development can omit it.
-This is a single-user access gate, with no accounts or sessions. Use HTTPS in
-production because Basic Auth sends credentials with requests. Browsers remember
-credentials; close the browser session to clear them.
+Use `npm run test:e2e` rather than invoking Playwright directly: the runner supplies the test database and dummy AI credentials. Ports 3100 and 3101 must be free. Stop existing development servers before running E2E tests to avoid sharing Next.js build output. Failed browser tests retain screenshots and traces in `test-results/`.
 
-Set the production `DATABASE_URL` using your PostgreSQL provider's required TLS
-settings, run `npm run db:migrate` once, then build with
-`npm run build -- --webpack` and serve with `npm start` (or the host equivalent).
-The pool allows five connections per process and waits at most five seconds for
-a connection. Set `OPENAI_API_KEY` for email analysis. Keep all three variables
-server-only and never deploy the E2E dummy credentials or local provider URL.
+Playwright is pinned to 1.56.1 for the project's macOS 13 development environment; revisit the pin when upgrading the operating system.
 
-Production email failures log fixed operation names and allowlisted diagnostic
-categories only. Email text, extracted fields, credentials, raw provider errors,
-and database connection strings are never included in these diagnostics.
+## Local setup
+
+### 1. Install dependencies
+
+Use Node.js 24, as specified in `.nvmrc`:
+
+```sh
+nvm use
+npm ci
+```
+
+### 2. Create local databases
+
+Install and start PostgreSQL. On macOS, Postgres.app is one option; enable its command-line tools during setup. Connect with `psql postgres` using your local administrative account, then run the following with your own local password:
+
+```sql
+CREATE ROLE jobtrack LOGIN PASSWORD 'replace-with-your-local-password';
+CREATE DATABASE jobtrack_ai OWNER jobtrack;
+CREATE DATABASE jobtrack_ai_test OWNER jobtrack;
+```
+
+### 3. Configure environment variables
+
+```sh
+cp .env.example .env.local
+cp .env.example .env.test.local
+```
+
+Set the development connection in `.env.local` and the test connection in `.env.test.local` using your PostgreSQL role and password. URL-encode special characters in connection-string passwords.
+
+| Variable | Purpose | Required |
+| --- | --- | --- |
+| `DATABASE_URL` | PostgreSQL connection for the app and migrations | To run the app |
+| `TEST_DATABASE_URL` | Connection to the dedicated `jobtrack_ai_test` database | For integration and E2E tests |
+| `OPENAI_API_KEY` | Server-side email analysis | Only for live AI features |
+| `APP_ACCESS_PASSWORD` | Shared access password; browser username is `jobtrack` | In production; optional locally |
+
+Environment files are ignored by Git. Keep these values server-only; never prefix them with `NEXT_PUBLIC_` or commit real credentials.
+
+### 4. Migrate and start
+
+```sh
+npm run db:migrate
+npm run dev
+```
+
+Open http://localhost:3000. Keep PostgreSQL running while using the app or database tests. Restart the development server after changing environment variables.
+
+For schema changes, add a new numbered SQL file under `db/migrations` and run `npm run db:migrate`. The runner records applied filenames and executes each new migration in a transaction. Do not edit applied migrations or run multiple migration runners concurrently.
+
+## Deployment
+
+The deployment stack is **Vercel + Neon + OpenAI**: Vercel hosts the Next.js app, Neon provides PostgreSQL, and OpenAI handles email analysis. Database access depends only on PostgreSQL through `DATABASE_URL`; the application does not require a Neon-specific SDK.
+
+1. Create the production PostgreSQL database in Neon and configure its connection string, including the provider's required TLS settings, as `DATABASE_URL` in Vercel.
+2. Set `APP_ACCESS_PASSWORD` to a long random secret. Set `OPENAI_API_KEY` to enable email analysis. Keep all values server-only, and do not deploy E2E dummy credentials or the local provider URL.
+3. Run `npm run db:migrate` once against the intended production database from an environment with its `DATABASE_URL` configured. The script also loads `.env.local` when present; verify the target before running it.
+4. Deploy the Next.js app to Vercel using `npm run build -- --webpack` as the build command. For a self-hosted Node.js deployment, the same build is served with `npm start`.
+
+Production requires HTTPS because the access gate uses HTTP Basic Auth. Sign in through the browser prompt with username `jobtrack` and the configured password. A missing or blank production password returns HTTP 503; missing or incorrect credentials return HTTP 401. This is a single-user access gate with no accounts or sessions. Browsers remember credentials; close the browser session to clear them.
+
+The database pool allows five connections per process with a five-second connection timeout. Production email failure logs use fixed operation names and allowlisted diagnostic categories, excluding email text, extracted values, credentials, and raw provider errors.
+
+## Future improvements
+
+Planned directions beyond the current MVP:
+
+- Gmail integration to reduce manual email pasting.
+- Deeper AI-powered job description analysis.
+- Follow-up reminders for applications awaiting a response.
+
+These features are not currently implemented.
