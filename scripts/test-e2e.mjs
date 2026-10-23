@@ -18,6 +18,9 @@ try {
 const child = spawn(process.execPath, ["node_modules/@playwright/test/cli.js", "test", ...process.argv.slice(2)], {
   stdio: "inherit",
   env: { ...process.env, DATABASE_URL: connectionString, TEST_DATABASE_URL: connectionString,
+    GMAIL_CLIENT_ID: "fake-client", GMAIL_CLIENT_SECRET: "fake-secret",
+    GMAIL_REDIRECT_URI: "http://127.0.0.1:3100/gmail/callback", GMAIL_TOKEN_KEY: Buffer.alloc(32, 7).toString("base64"),
+    GMAIL_TEST_ORIGIN: "http://127.0.0.1:3101",
     APP_ACCESS_PASSWORD: "e2e-only-password", OPENAI_API_KEY: "e2e-dummy-key", OPENAI_BASE_URL: "http://127.0.0.1:3101/v1" },
 });
 for (const signal of ["SIGINT", "SIGTERM"]) process.on(signal, () => child.kill(signal));

@@ -15,6 +15,13 @@ async function findMatches(company: string, position: string) {
   }));
 }
 
+async function reviewDraft(draft: import("zod").infer<typeof classifiedDraftSchema>): Promise<EmailImportState> {
+    if (draft.emailType === "OTHER") return { emailType: "OTHER", message: "No single supported application event was identified. Nothing has been saved." };
+    const matches = await findMatches(draft.company ?? "", draft.position ?? "");
+    return { emailType: draft.emailType, values: draftToFormValues(draft), matches,
+      message: draft.emailType === "APPLICATION_CONFIRMATION" ? `${draftReviewMessage(draft)}${matches.length ? " An application with this company and position already exists. Confirm only if you want another application." : ""}` : "Review the matching application and proposed status. Nothing has been saved." };
+}
+
 // Analysis and matching are read-only. Only confirmation actions may write.
 export async function extractEmailAction(formData: FormData): Promise<EmailImportState> {
   await requireAppAccess();
@@ -22,10 +29,7 @@ export async function extractEmailAction(formData: FormData): Promise<EmailImpor
   if (!input.success) return { error: input.error.issues[0].message };
   try {
     const draft = classifiedDraftSchema.parse(await extractApplicationDraft(input.data.emailText));
-    if (draft.emailType === "OTHER") return { emailType: "OTHER", message: "No single supported application event was identified. Nothing has been saved." };
-    const matches = await findMatches(draft.company ?? "", draft.position ?? "");
-    return { emailType: draft.emailType, values: draftToFormValues(draft), matches,
-      message: draft.emailType === "APPLICATION_CONFIRMATION" ? `${draftReviewMessage(draft)}${matches.length ? " An application with this company and position already exists. Confirm only if you want another application." : ""}` : "Review the matching application and proposed status. Nothing has been saved." };
+    return reviewDraft(draft);
   } catch (error) {
     console.error("Email analysis or application lookup failed");
     if (error instanceof Error && error.message === "AI_NOT_CONFIGURED") {

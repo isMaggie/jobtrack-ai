@@ -15,7 +15,7 @@ async function dashboardStatus(page: Page, status: string) {
   await expect(row.getByText(status, { exact: true })).toBeVisible();
 }
 
-test.beforeEach(async () => { await query("DELETE FROM applications"); });
+test.beforeEach(async () => { await query("TRUNCATE applications,gmail_connection,gmail_imports"); });
 
 test("create application and retain all fields after reload", async ({ page }) => {
   await page.goto("/");
@@ -111,4 +111,54 @@ test("rejects unauthenticated page and action requests", async ({ playwright }) 
     const response = await anonymous.post("/applications/import", { headers: { "Next-Action": "unauthorized-test" }, form: { emailText: "Must not reach provider" } });
     expect(response.status()).toBe(401);
   } finally { await anonymous.dispose(); }
+});
+
+test("Gmail OAuth, manual deduplicated sync, review edits and explicit save", async ({ page }) => {
+  await query("TRUNCATE gmail_connection,gmail_imports");
+  // Playwright intercepts the first request in a redirect chain, not each hop.
+  // Run the real connect handler (including its state cookie), but replace its
+  // external redirect so dummy OAuth credentials never reach Google.
+  await page.route("**/gmail/connect", async (route) => {
+    const response = await route.fetch({ maxRedirects: 0 });
+    expect(response.status()).toBe(303);
+    const url = new URL(response.headers().location);
+    expect(url.origin).toBe("https://accounts.google.com");
+    expect(url.pathname).toBe("/o/oauth2/v2/auth");
+    expect(url.searchParams.get("scope")).toBe("https://www.googleapis.com/auth/gmail.readonly");
+    expect(url.searchParams.get("code_challenge_method")).toBe("S256");
+    const callback = new URL(url.searchParams.get("redirect_uri")!);
+    callback.searchParams.set("code", "fake-code"); callback.searchParams.set("state", url.searchParams.get("state")!);
+    await route.fulfill({ response, headers: { ...response.headers(), location: callback.toString() } });
+  });
+  await page.goto("/applications/import");
+  await page.getByRole("button", { name: "Connect Gmail", exact: true }).click();
+  await expect(page.getByText("Connected: fake@example.com", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Sync Gmail", exact: true }).click();
+  await expect(page.getByText(/Sync complete: 1 new/)).toBeVisible();
+  expect(await applications()).toHaveLength(0);
+  await page.getByRole("button", { name: "Sync Gmail", exact: true }).click();
+  await expect(page.getByText(/Sync complete: 0 new/)).toBeVisible();
+  await page.getByText(/Review Gmail draft:/).click();
+  const review = page.locator("details");
+  await review.getByLabel("Position", { exact: true }).fill("Reviewed Engineer");
+  expect(await applications()).toHaveLength(0);
+  await review.getByRole("button", { name: "Confirm and save application" }).click();
+  await expect(page).toHaveURL(/\/applications\/[0-9a-f-]+$/);
+  expect(await applications()).toMatchObject([{ position: "Reviewed Engineer", status: "APPLIED" }]);
+  const imports = await query("SELECT * FROM gmail_imports");
+  expect(imports.rows).toHaveLength(1);
+  expect(JSON.stringify(imports.rows)).not.toContain("E2E confirmation email");
+  await page.goto("/applications/import");
+  await page.getByRole("button", { name: "Disconnect Gmail", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Connect Gmail", exact: true })).toBeVisible();
+  expect((await query("SELECT * FROM gmail_connection")).rows).toHaveLength(0);
+});
+
+test("Gmail rejects forged OAuth state and cross-origin connect requests", async ({ request }) => {
+  await query("TRUNCATE gmail_connection,gmail_imports");
+  const forged = await request.get("/gmail/callback?state=forged&code=fake-code");
+  expect(forged.url()).toContain("gmail=error");
+  expect((await query("SELECT * FROM gmail_connection")).rows).toHaveLength(0);
+  const crossOrigin = await request.post("/gmail/connect", { headers: { origin: "https://other.example" } });
+  expect(crossOrigin.status()).toBe(403);
 });

@@ -4,6 +4,16 @@ export async function startEmailProvider() {
   const server = createServer(async (request, response) => {
     let body = "";
     for await (const chunk of request) body += chunk;
+    if (request.url === "/token") {
+      response.writeHead(200, { "Content-Type": "application/json" });
+      response.end(JSON.stringify({ access_token: "fake-access", refresh_token: "fake-refresh", expires_in: 3600, scope: "https://www.googleapis.com/auth/gmail.readonly" })); return;
+    }
+    if (request.url?.startsWith("/gmail/")) {
+      const data = request.url.includes("/profile") ? { emailAddress: "fake@example.com" }
+        : request.url.includes("/messages/fake-message") ? { payload: { mimeType: "text/plain", body: { data: Buffer.from("E2E confirmation email").toString("base64url") } } }
+        : { messages: [{ id: "fake-message" }] };
+      response.writeHead(200, { "Content-Type": "application/json" }); response.end(JSON.stringify(data)); return;
+    }
     const input = JSON.parse(body);
     const email = input.input?.find((message) => message.role === "user")?.content;
     if (request.method !== "POST" || request.url !== "/v1/responses" ||

@@ -9,9 +9,9 @@ import { EmailStatusReview } from "./email-status-review";
 import { FormFeedback } from "@/components/ui/form-feedback";
 import { FormField } from "@/components/ui/form-field";
 
-export function EmailImportForm() {
+export function EmailImportForm({ initialState = {} }: { initialState?: EmailImportState }) {
   const [emailText, setEmailText] = useState("");
-  const [state, setState] = useState<EmailImportState>({});
+  const [state, setState] = useState<EmailImportState>(initialState);
   const [pending, setPending] = useState(false);
 
   async function extract(formData: FormData) {

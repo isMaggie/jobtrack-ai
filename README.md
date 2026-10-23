@@ -51,11 +51,28 @@ The repository uses plain SQL through `pg`, with numbered SQL migrations under `
 3. **Review the proposal.** Confirmations produce an editable application draft. Interview, offer, and rejection emails propose a status update after matching an existing application by company and position, ignoring case and repeated whitespace.
 4. **Confirm the write.** Supply missing fields, correct extracted values, or select among matching records before explicitly saving or confirming an update. New applications start as Applied.
 
-Analysis alone never writes to the database. Unrelated or ambiguous emails propose no change, and stale status proposals require matching and review again. Canceling or navigating away discards the pending draft.
+Analysis alone never writes application records. Unrelated or ambiguous emails propose no change, and stale status proposals require matching and review again. Canceling or navigating away discards the pending draft.
 
-JobTrack does not persist pasted emails or pending proposals. Requests use `store: false` to avoid storing Responses API response state; OpenAI's data-handling policies still apply. Remove personal information you do not want to send. No links in the email are fetched.
+JobTrack does not persist pasted emails or their pending proposals. Gmail imports retain extracted proposals for later review, but never raw email bodies. Requests use `store: false` to avoid storing Responses API response state; OpenAI's data-handling policies still apply. Remove personal information you do not want to send. No links in the email are fetched.
 
 The extraction request has a 30-second timeout and no automatic retries. Errors preserve pasted text or edited form values. Manual entry remains available without an API key. The model is configured in `src/lib/email-extraction.ts`.
+
+## Gmail manual sync
+
+On **Import from email**, connect one Gmail mailbox using Google OAuth with only `gmail.readonly`, then click **Sync Gmail**. Sync searches the last 14 days for application-related candidates, lists at most 20 messages, and analyzes at most 5 unseen messages per click. It does not paginate or modify Gmail read/unread state. Older messages and messages outside this bounded candidate window may not be imported; pasted email remains available.
+
+OAuth uses a short-lived HttpOnly state/PKCE cookie. Server-side access and refresh tokens use AES-256-GCM encryption. `gmail_connection` stores the single mailbox and encrypted tokens; `gmail_imports` stores mailbox/message IDs and validated extracted drafts. No raw body, subject, attachment, or sender is stored. Plain-text MIME parts are supported; HTML-only messages and attachments are skipped. Sync serializes overlapping operations with one PostgreSQL advisory lock, with no jobs, webhooks, or leases. Failed analyses are retried on the next manual sync; completed messages are deduplicated by mailbox and Gmail message ID.
+
+Open a saved Gmail draft to reuse the editable application form or matching/status confirmation screen. Sync never creates applications or changes statuses. Drafts remain available after confirmation; matching records are shown to help avoid accidental duplicate applications. Disconnect removes local tokens; retained drafts reappear when the same mailbox reconnects. To revoke Google's authorization too, remove the app in your Google account permissions.
+
+To enable live Gmail:
+
+1. Enable the Gmail API in Google Cloud and create a Web application OAuth client. Configure its consent screen and your personal account as a test user when applicable.
+2. Register the exact callback URL, e.g. `http://localhost:3000/gmail/callback` locally or `https://your-host/gmail/callback` in deployment.
+3. Set server-only `GMAIL_CLIENT_ID`, `GMAIL_CLIENT_SECRET`, and `GMAIL_REDIRECT_URI`. Generate `GMAIL_TOKEN_KEY` with `openssl rand -base64 32`; keep it stable and separate from the database. Losing or changing it requires reconnecting Gmail.
+4. Set `OPENAI_API_KEY`, run migrations, restart the app, and connect Gmail. Production requires HTTPS and `APP_ACCESS_PASSWORD` as before.
+
+The Gmail readonly permission is a restricted Google scope; deployment beyond personal testing may require Google's verification process. See [Google's scope documentation](https://developers.google.com/workspace/gmail/api/auth/scopes) and [OAuth server flow](https://developers.google.com/workspace/gmail/api/auth/web-server).
 
 ## Testing
 
@@ -63,7 +80,7 @@ The extraction request has a 30-second timeout and no automatic retries. Errors 
 - **Integration tests:** Repository behavior against real PostgreSQL.
 - **Browser E2E tests:** Manual creation and status updates, email draft review and save, confirmed email status updates, discard/back safeguards, and unauthenticated request rejection.
 
-AI requests are mocked in unit and integration tests. Playwright uses real Server Actions and SQL with a local HTTP provider stub, so no tests require a real OpenAI key or call the live API.
+Gmail and AI requests are mocked in unit and integration tests. Playwright uses real Server Actions and SQL with a local HTTP provider stub, so no tests require real Gmail/OpenAI credentials or call live providers. The E2E-only Gmail origin override is restricted to the pinned local stub with matching test database configuration and is rejected in production.
 
 After installing dependencies, install Chromium once:
 
@@ -82,7 +99,7 @@ npm run build -- --webpack
 npm run typecheck
 ```
 
-Unit tests need no database. Integration and E2E tests require `TEST_DATABASE_URL` in `.env.test.local` and verify that the connected database is named `jobtrack_ai_test` before migrating. **Both suites clear application rows in that database.** Keep it dedicated to tests, and never run the database suites concurrently.
+Unit tests need no database. Integration and E2E tests require `TEST_DATABASE_URL` in `.env.test.local` and verify that the connected database is named `jobtrack_ai_test` before migrating. **Both suites clear application and Gmail rows in that database.** Keep it dedicated to tests, and never run the database suites concurrently.
 
 Use `npm run test:e2e` rather than invoking Playwright directly: the runner supplies the test database and dummy AI credentials. Ports 3100 and 3101 must be free. Stop existing development servers before running E2E tests to avoid sharing Next.js build output. Failed browser tests retain screenshots and traces in `test-results/`.
 
@@ -155,7 +172,6 @@ The database pool allows five connections per process with a five-second connect
 
 Planned directions beyond the current MVP:
 
-- Gmail integration to reduce manual email pasting.
 - Deeper AI-powered job description analysis.
 - Follow-up reminders for applications awaiting a response.
 
