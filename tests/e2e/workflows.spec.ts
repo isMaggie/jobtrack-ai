@@ -162,3 +162,23 @@ test("Gmail rejects forged OAuth state and cross-origin connect requests", async
   const crossOrigin = await request.post("/gmail/connect", { headers: { origin: "https://other.example" } });
   expect(crossOrigin.status()).toBe(403);
 });
+
+test("delete only the selected application after checkbox confirmation on details", async ({ page }) => {
+  const first = await seedApplication();
+  const second = await seedApplication();
+  const survivor = (await applications()).find((application) => application.id === first);
+  await page.goto("/");
+  await expect(page.getByRole("button", { name: "Delete application", exact: true })).toHaveCount(0);
+  await page.goto(`/applications/${second}`);
+  const confirm = page.getByRole("checkbox", { name: "I confirm I want to delete this application." });
+  await expect(confirm).not.toBeChecked();
+  await page.getByRole("button", { name: "Delete application", exact: true }).click();
+  await expect(confirm).toBeFocused();
+  expect(await applications()).toHaveLength(2);
+  await confirm.check();
+  await page.getByRole("button", { name: "Delete application", exact: true }).click();
+  await expect(page).toHaveURL("/");
+  expect(await applications()).toEqual([survivor]);
+  await page.reload();
+  await expect(page.getByRole("row").filter({ hasText: "Example Company" })).toHaveCount(1);
+});

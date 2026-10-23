@@ -1,3 +1,4 @@
+import { DeleteApplicationForm } from "@/components/applications/delete-application-form";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { connection } from "next/server";
@@ -34,11 +35,16 @@ export default async function ApplicationPage({ params }: { params: Promise<{ id
           <p className="whitespace-pre-wrap break-words leading-7 text-slate-700">{application.jobDescription || "No job description provided."}</p>
         </Panel></section>
       </div>
-      <aside className="lg:col-start-2" aria-labelledby="progress-heading"><Panel>
+      <aside className="space-y-6 lg:col-start-2" aria-labelledby="progress-heading"><Panel>
         <h2 id="progress-heading" className="text-lg font-semibold">Application progress</h2>
         <p className="mt-2 text-sm text-slate-600">Update your status as your application moves forward.</p>
         <StatusForm id={application.id} status={application.status} />
-      </Panel></aside>
+      </Panel>
+        <section aria-labelledby="delete-heading"><Panel>
+          <h2 id="delete-heading" className="text-lg font-semibold">Delete application</h2>
+          <DeleteApplicationForm id={application.id} company={application.company} position={application.position} />
+        </Panel></section>
+      </aside>
     </div>
   </main>;
 }

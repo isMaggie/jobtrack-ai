@@ -6,7 +6,7 @@ import { type ApplicationStatus } from "./application";
 import { getPool } from "./db";
 
 import { confirmEmailStatusAction, matchEmailAction, extractEmailAction } from "../app/applications/import/actions";
-import { createApplicationAction } from "../app/applications/actions";
+import { createApplicationAction, deleteApplicationAction } from "../app/applications/actions";
 import { extractApplicationDraft } from "./email-extraction";
 
 vi.mock("./email-extraction", () => ({ extractApplicationDraft: vi.fn() }));
@@ -220,5 +220,22 @@ describe("email lifecycle safeguards", () => {
     const created = await createApplication(input);
     expect(await confirmImportedStatus(created.id, "APPLIED", "APPLIED", created)).toBeNull();
     expect(await getApplicationById(created.id)).toEqual(created);
+  });
+});
+
+describe("application deletion", () => {
+  it("requires confirmation and deletes only the selected application through the action", async () => {
+    const first = await createApplication(input);
+    const second = await createApplication(input);
+    const data = new FormData();
+    expect(await deleteApplicationAction(second.id, {}, data)).toHaveProperty("error");
+    data.set("confirm", "yes");
+    expect(await deleteApplicationAction("invalid", {}, data)).toHaveProperty("error");
+    expect(await getApplicationById(second.id)).toEqual(second);
+    await expect(deleteApplicationAction(second.id, {}, data)).rejects.toThrow("test redirect");
+    expect(await getApplicationById(second.id)).toBeNull();
+    expect(await listApplications()).toEqual([first]);
+    expect(await deleteApplicationAction(second.id, {}, data)).toEqual({ error: "This application no longer exists." });
+    expect(await getApplicationById(first.id)).toEqual(first);
   });
 });

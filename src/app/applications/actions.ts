@@ -4,8 +4,8 @@ import { requireAppAccess } from "../../lib/access";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { applicationSchema, applicationStatusSchema } from "../../lib/application";
-import { parseApplicationForm, type ApplicationFormState, type StatusFormState } from "../../lib/application-form";
-import { createApplication, updateApplicationStatus } from "../../lib/application-repository";
+import { parseApplicationForm, type ApplicationFormState, type StatusFormState, type DeleteApplicationFormState } from "../../lib/application-form";
+import { createApplication, updateApplicationStatus, deleteApplication } from "../../lib/application-repository";
 
 export async function createApplicationAction(_previousState: ApplicationFormState, formData: FormData): Promise<ApplicationFormState> {
   await requireAppAccess();
@@ -40,4 +40,21 @@ export async function updateApplicationStatusAction(id: string, _previousState: 
   revalidatePath("/");
   revalidatePath(`/applications/${validId.data}`);
   return { message: "Status updated." };
+}
+
+export async function deleteApplicationAction(id: string, _previousState: DeleteApplicationFormState, formData: FormData): Promise<DeleteApplicationFormState> {
+  await requireAppAccess();
+  const validId = applicationSchema.shape.id.safeParse(id);
+  if (!validId.success) return { error: "Invalid application ID." };
+  if (formData.get("confirm") !== "yes") return { error: "Confirm that you want to delete this application." };
+
+  try {
+    if (!await deleteApplication(validId.data)) return { error: "This application no longer exists." };
+  } catch {
+    console.error("Application deletion failed");
+    return { error: "Couldn’t delete the application. Please try again." };
+  }
+  revalidatePath("/");
+  revalidatePath(`/applications/${validId.data}`);
+  redirect("/");
 }

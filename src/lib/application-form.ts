@@ -29,3 +29,5 @@ export function parseApplicationForm(formData: FormData) {
   // Ignore any submitted status: creation always uses the domain's APPLIED default.
   return { success: true as const, values, data: applicationInputSchema.parse(result.data) };
 }
+
+export type DeleteApplicationFormState = { error?: string };

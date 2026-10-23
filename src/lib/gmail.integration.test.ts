@@ -1,4 +1,5 @@
 import { beforeEach, afterAll, afterEach, expect, it, vi } from "vitest";
+import { createApplication, deleteApplication } from "./application-repository";
 import { getPool } from "./db";
 import { connectGmail, decryptTokens, syncGmail, GMAIL_SCOPE } from "./gmail";
 import { extractApplicationDraft } from "./email-extraction";
@@ -68,4 +69,24 @@ it("identifies invalid-key failures as token encryption and rolls back the conne
   await expect(connectGmail("code", "verifier", (stage) => stages.push(stage))).rejects.toThrow("32 random bytes");
   expect(stages.at(-1)).toBe("token_encryption");
   expect((await getPool().query("SELECT * FROM gmail_connection")).rows).toEqual([]);
+});
+
+it("preserves Gmail import history and deduplication after application deletion", async () => {
+  await connectGmail("code", "verifier");
+  expect(await syncGmail()).toBe(5);
+  const imports = (await getPool().query("SELECT * FROM gmail_imports ORDER BY message_id")).rows;
+  const application = await createApplication({ company: draft.company, position: draft.position, appliedDate: new Date("2026-10-07T00:00:00Z") });
+  expect(await deleteApplication(application.id)).toBe(true);
+  expect((await getPool().query("SELECT * FROM gmail_imports ORDER BY message_id")).rows).toEqual(imports);
+  const callsBefore = vi.mocked(extractApplicationDraft).mock.calls.length;
+  // Offer only messages already imported so the next sync should do no analysis.
+  const originalFetch = fetcher.getMockImplementation() as (url: string) => Promise<Response>;
+  fetcher.mockImplementation(async (url: string) => {
+    if (url.includes("/token")) return originalFetch(url);
+    if (url.includes("maxResults")) return new Response(JSON.stringify({ messages: imports.map((row) => ({ id: row.message_id })) }));
+    throw new Error("Previously imported messages must not be fetched again");
+  });
+  expect(await syncGmail()).toBe(0);
+  expect(vi.mocked(extractApplicationDraft)).toHaveBeenCalledTimes(callsBefore);
+  expect((await getPool().query("SELECT * FROM gmail_connection")).rows).toHaveLength(1);
 });

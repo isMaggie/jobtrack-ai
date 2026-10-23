@@ -61,3 +61,9 @@ export async function confirmImportedStatus(id: string, status: ApplicationStatu
   );
   return result.rows.length ? mapApplication(result.rows[0]) : null;
 }
+
+export async function deleteApplication(id: string): Promise<boolean> {
+  const validId = applicationSchema.shape.id.parse(id);
+  const result = await getPool().query("DELETE FROM applications WHERE id = $1 RETURNING id", [validId]);
+  return result.rows.length > 0;
+}
